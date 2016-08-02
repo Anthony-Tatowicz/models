@@ -60,7 +60,7 @@ contains the following fields:
   image/class/text: string specifying the human-readable version of the label
     e.g. 'dog'
 
-If you data set involves bounding boxes, please look at build_imagenet_data.py.
+If your data set involves bounding boxes, please look at build_imagenet_data.py.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -90,6 +90,10 @@ tf.app.flags.DEFINE_integer('validation_shards', 2,
 
 tf.app.flags.DEFINE_integer('num_threads', 2,
                             'Number of threads to preprocess the images.')
+
+
+tf.app.flags.DEFINE_boolean('resize', False,
+                            'Resize the images if true.')
 
 # The labels file contains a list of valid labels are held in this file.
 # Assumes that the file contains entries as such:
@@ -163,6 +167,14 @@ class ImageCoder(object):
     self._decode_jpeg_data = tf.placeholder(dtype=tf.string)
     self._decode_jpeg = tf.image.decode_jpeg(self._decode_jpeg_data, channels=3)
 
+    # Initializes function to resize image
+    self._jpeg_data = tf.placeholder(dtype=tf.string)
+    self._dims = tf.placeholder(dtype=tf.int32, shape=[2])
+    image = tf.image.decode_jpeg(self._jpeg_data, channels=3)
+    image = tf.image.resize_images(image, self._dims[0], self._dims[1])
+    image = tf.cast(image, dtype=tf.uint8)
+    self._resize = tf.image.encode_jpeg(image, format='rgb', quality=100)
+
   def png_to_jpeg(self, image_data):
     return self._sess.run(self._png_to_jpeg,
                           feed_dict={self._png_data: image_data})
@@ -173,6 +185,10 @@ class ImageCoder(object):
     assert len(image.shape) == 3
     assert image.shape[2] == 3
     return image
+
+  def resize(self, image_data, dims):
+    feed_dict = {self._jpeg_data: image_data, self._dims: dims}
+    return self._sess.run(self._resize, feed_dict=feed_dict)
 
 
 def _is_png(filename):
@@ -185,7 +201,6 @@ def _is_png(filename):
     boolean indicating if the image is a PNG.
   """
   return '.png' in filename
-
 
 def _process_image(filename, coder):
   """Process a single image file.
@@ -215,8 +230,53 @@ def _process_image(filename, coder):
   width = image.shape[1]
   assert image.shape[2] == 3
 
+  # Optinally resize the image if required
+  if FLAGS.resize:
+    new_dims = _calculate_dims(height, width)
+    image_data = coder.resize(image_data, new_dims)
+
   return image_data, height, width
 
+def _calculate_bounding_box(height, width):
+  """Calculate bouding box for cropping
+
+  center crops out the extra pixels off of the larger
+  dimension so the final image is 299x299
+  """
+  # Only Crop if we have to
+  if not height == width:
+    # Centrally crop off the extra pixels on larger dim
+    if height > width:
+      dy = int((height - 299) / 2)
+      bounding_box = [dy, 0, 299 + dy, 299]
+
+    else:
+      dx = int((width - 299) / 2)
+      bounding_box =  [0, dx, 299, 299 + dx]
+
+  return bounding_box
+
+def _calculate_dims(height, width):
+  """Calculate the new dimensions
+
+  Resized the image by calculating a scale factor and
+  then scaling the image with the factor to avoid distortion
+  the rest of the larger dimen is center cropped.
+  Described in the AlexNet paper (http://www.cs.toronto.edu/~fritz/absps/imagenet.pdf)
+  """
+  if height > width:
+    scale_factor = height / width
+    new_height = int(299 * scale_factor)
+    new_width = 299
+  elif width > height:
+    scale_factor = width / height
+    new_height = 299
+    new_width = int(299 * scale_factor)
+  else:
+    new_height = 299
+    new_width = 299
+
+  return [new_height, new_width]
 
 def _process_image_files_batch(coder, thread_index, ranges, name, filenames,
                                texts, labels, num_shards):

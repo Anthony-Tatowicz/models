@@ -26,6 +26,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.client import timeline
 
 from inception import image_processing
 from inception import inception_model as inception
@@ -220,7 +221,7 @@ def train(dataset):
     # Number of classes in the Dataset label set plus 1.
     # Label 0 is reserved for an (unused) background class.
     num_classes = dataset.num_classes() + 1
-    
+
      # Split the batch of images and labels for towers.
     images_splits = tf.split(0, FLAGS.num_gpus, images)
     labels_splits = tf.split(0, FLAGS.num_gpus, labels)
@@ -332,9 +333,19 @@ def train(dataset):
         graph_def=sess.graph.as_graph_def(add_shapes=True))
 
     for step in xrange(FLAGS.max_steps):
+
+      run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+      run_metadata = tf.RunMetadata()
       start_time = time.time()
-      _, loss_value = sess.run([train_op, loss])
+      _, loss_value = sess.run([train_op, loss], options=run_options, run_metadata=run_metadata)
       duration = time.time() - start_time
+
+      # Create the Timeline object, and write it to a json
+      tl = timeline.Timeline(run_metadata.step_stats)
+      ctf = tl.generate_chrome_trace_format()
+      trace_file = os.path.join(FLAGS.train_dir, 'timeline.json')
+      with open(trace_file, 'w') as f:
+          f.write(ctf)
 
       assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
 

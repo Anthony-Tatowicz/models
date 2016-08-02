@@ -194,7 +194,7 @@ def distort_color(image, thread_id=0, scope=None):
     return image
 
 
-def distort_image(image, height, width, bbox, thread_id=0, scope=None):
+def distort_image(image, height, width, thread_id=0, scope=None):
   """Distort one image for training a network.
 
   Distorting images provides a useful technique for augmenting the data
@@ -213,15 +213,15 @@ def distort_image(image, height, width, bbox, thread_id=0, scope=None):
   Returns:
     3-D float Tensor of distorted image used for training.
   """
-  with tf.op_scope([image, height, width, bbox], scope, 'distort_image'):
+  with tf.op_scope([image, height, width], scope, 'distort_image'):
     # Each bounding box has shape [1, num_boxes, box coords] and
     # the coordinates are ordered [ymin, xmin, ymax, xmax].
 
     # Display the bounding box in the first thread only.
-    if not thread_id:
-      image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
-                                                    bbox)
-      tf.image_summary('image_with_bounding_boxes', image_with_box)
+    # if not thread_id:
+    #   image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
+    #                                                 bbox)
+    #   tf.image_summary('image_with_bounding_boxes', image_with_box)
 
   # A large fraction of image datasets contain a human-annotated bounding
   # box delineating the region of the image containing the object of interest.
@@ -230,23 +230,23 @@ def distort_image(image, height, width, bbox, thread_id=0, scope=None):
   # range of aspect ratios, sizes and overlap with the human-annotated
   # bounding box. If no box is supplied, then we assume the bounding box is
   # the entire image.
-    sample_distorted_bounding_box = tf.image.sample_distorted_bounding_box(
-        tf.shape(image),
-        bounding_boxes=bbox,
-        min_object_covered=0.1,
-        aspect_ratio_range=[0.75, 1.33],
-        area_range=[0.05, 1.0],
-        max_attempts=100,
-        use_image_if_no_bounding_boxes=True)
-    bbox_begin, bbox_size, distort_bbox = sample_distorted_bounding_box
-    if not thread_id:
-      image_with_distorted_box = tf.image.draw_bounding_boxes(
-          tf.expand_dims(image, 0), distort_bbox)
-      tf.image_summary('images_with_distorted_bounding_box',
-                       image_with_distorted_box)
-
+    # sample_distorted_bounding_box = tf.image.sample_distorted_bounding_box(
+    #     tf.shape(image),
+    #     bounding_boxes=bbox,
+    #     min_object_covered=0.1,
+    #     aspect_ratio_range=[0.75, 1.33],
+    #     area_range=[0.05, 1.0],
+    #     max_attempts=100,
+    #     use_image_if_no_bounding_boxes=True)
+    # bbox_begin, bbox_size, distort_bbox = sample_distorted_bounding_box
+    # if not thread_id:
+    #   image_with_distorted_box = tf.image.draw_bounding_boxes(
+    #       tf.expand_dims(image, 0), distort_bbox)
+    #   tf.image_summary('images_with_distorted_bounding_box',
+    #                    image_with_distorted_box)
+    #
     # Crop the image to the specified bounding box.
-    distorted_image = tf.slice(image, bbox_begin, bbox_size)
+    # distorted_image = tf.slice(image, bbox_begin, bbox_size)
 
     # This resizing operation may distort the images because the aspect
     # ratio is not respected. We select a resize method in a round robin
@@ -298,7 +298,7 @@ def eval_image(image, height, width, scope=None):
     return image
 
 
-def image_preprocessing(image_buffer, bbox, train, thread_id=0):
+def image_preprocessing(image_buffer, train, thread_id=0):
   """Decode and preprocess one image for evaluation or training.
 
   Args:
@@ -315,15 +315,15 @@ def image_preprocessing(image_buffer, bbox, train, thread_id=0):
   Raises:
     ValueError: if user does not provide bounding box
   """
-  if bbox is None:
-    raise ValueError('Please supply a bounding box.')
+  # if bbox is None:
+  #   raise ValueError('Please supply a bounding box.')
 
   image = decode_jpeg(image_buffer)
   height = FLAGS.image_size
   width = FLAGS.image_size
 
   if train:
-    image = distort_image(image, height, width, bbox, thread_id)
+    image = distort_image(image, height, width, thread_id)
   else:
     image = eval_image(image, height, width)
 
@@ -374,38 +374,39 @@ def parse_example_proto(example_serialized):
                                           default_value=''),
       'image/class/label': tf.FixedLenFeature([1], dtype=tf.int64,
                                               default_value=-1),
-      'image/class/text': tf.FixedLenFeature([], dtype=tf.string,
-                                             default_value=''),
+    #   'image/class/text': tf.FixedLenFeature([], dtype=tf.string,
+                                            #  default_value=''),
   }
-  sparse_float32 = tf.VarLenFeature(dtype=tf.float32)
+  # sparse_float32 = tf.VarLenFeature(dtype=tf.float32)
   # Sparse features in Example proto.
-  feature_map.update(
-      {k: sparse_float32 for k in ['image/object/bbox/xmin',
-                                   'image/object/bbox/ymin',
-                                   'image/object/bbox/xmax',
-                                   'image/object/bbox/ymax']})
+  # feature_map.update(
+  #     {k: sparse_float32 for k in ['image/object/bbox/xmin',
+  #                                  'image/object/bbox/ymin',
+  #                                  'image/object/bbox/xmax',
+  #                                  'image/object/bbox/ymax']})
 
   features = tf.parse_single_example(example_serialized, feature_map)
   label = tf.cast(features['image/class/label'], dtype=tf.int32)
 
-  xmin = tf.expand_dims(features['image/object/bbox/xmin'].values, 0)
-  ymin = tf.expand_dims(features['image/object/bbox/ymin'].values, 0)
-  xmax = tf.expand_dims(features['image/object/bbox/xmax'].values, 0)
-  ymax = tf.expand_dims(features['image/object/bbox/ymax'].values, 0)
+  # xmin = tf.expand_dims(features['image/object/bbox/xmin'].values, 0)
+  # ymin = tf.expand_dims(features['image/object/bbox/ymin'].values, 0)
+  # xmax = tf.expand_dims(features['image/object/bbox/xmax'].values, 0)
+  # ymax = tf.expand_dims(features['image/object/bbox/ymax'].values, 0)
 
   # Note that we impose an ordering of (y, x) just to make life difficult.
-  bbox = tf.concat(0, [ymin, xmin, ymax, xmax])
+  # bbox = tf.concat(0, [ymin, xmin, ymax, xmax])
 
   # Force the variable number of bounding boxes into the shape
   # [1, num_boxes, coords].
-  bbox = tf.expand_dims(bbox, 0)
-  bbox = tf.transpose(bbox, [0, 2, 1])
+  # bbox = tf.expand_dims(bbox, 0)
+  # bbox = tf.transpose(bbox, [0, 2, 1])
 
-  return features['image/encoded'], label, bbox, features['image/class/text']
+  return features['image/encoded'], label]
+  # , features['image/class/text']
 
 
 def batch_inputs(dataset, batch_size, train, num_preprocess_threads=None,
-                 num_readers=1):
+                 num_readers=None):
   """Contruct batches of training or evaluation examples from the image dataset.
 
   Args:
@@ -486,7 +487,7 @@ def batch_inputs(dataset, batch_size, train, num_preprocess_threads=None,
     images_and_labels = []
     for thread_id in range(num_preprocess_threads):
       # Parse a serialized Example proto to extract the image and metadata.
-      image_buffer, label_index, bbox, _ = parse_example_proto(
+      image_buffer, label_index, _ = parse_example_proto(
           example_serialized)
       image = image_preprocessing(image_buffer, bbox, train, thread_id)
       images_and_labels.append([image, label_index])
